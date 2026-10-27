@@ -7,11 +7,20 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 
 partial class QuotaWidget {
+    static string[] ClaudeProfileDirectories(string parent,string pattern){
+        try{return Directory.EnumerateDirectories(parent,pattern).Take(32).ToArray();}
+        catch(IOException){return new string[0];}catch(UnauthorizedAccessException){return new string[0];}
+    }
     static IEnumerable<string> ClaudeDesktopProfiles(ClientRoots roots){
         var profiles=new List<string>{Path.Combine(roots.Roaming,"Claude"),Path.Combine(roots.Local,"Claude")};
+        // Store builds can run with --user-data-dir under Claude-Data instead of
+        // the package LocalCache. Discover only known names in this user's root.
+        string dataRoot=Path.Combine(roots.Local,"Claude-Data");profiles.Add(dataRoot);
+        foreach(string pattern in new[]{"Claude_*","AnthropicPBC.Claude_*"})
+            profiles.AddRange(ClaudeProfileDirectories(dataRoot,pattern));
         string packages=Path.Combine(roots.Local,"Packages");
-        if(Directory.Exists(packages))foreach(string pattern in new[]{"Claude_*","AnthropicPBC.Claude_*"})
-            foreach(string package in Directory.EnumerateDirectories(packages,pattern).Take(32))profiles.Add(Path.Combine(package,"LocalCache","Roaming","Claude"));
+        foreach(string pattern in new[]{"Claude_*","AnthropicPBC.Claude_*"})
+            foreach(string package in ClaudeProfileDirectories(packages,pattern))profiles.Add(Path.Combine(package,"LocalCache","Roaming","Claude"));
         return profiles.Distinct(StringComparer.OrdinalIgnoreCase);
     }
     static string ClaudeDesktopLoginPath(ClientRoots roots){
@@ -91,9 +100,29 @@ partial class QuotaWidget {
     }
     static string ClaudeDesktopDiscoveryInfo(ClientRoots roots){
         string path=ClaudeDesktopLoginPath(roots);
-        return path==null?Text("桌面登录存储：未发现；已检查标准及商店版位置。","Desktop sign-in store: not found in standard or Store locations."):
+        string result=path==null?Text("桌面登录存储：未发现可识别的授权文件；不代表未安装或未登录。","Desktop sign-in store: no recognized authorization file; this does not establish installation or sign-in status."):
             Text("桌面登录存储：","Desktop sign-in store: ")+path+"\n"+(Path.GetFileName(path)=="config.json"?
             Text("方式：桌面端 Code 加密 OAuth，只读；无需 CLI 或插件。","Method: read-only Desktop Code encrypted OAuth; no CLI or plugin required."):
             Text("方式：旧版桌面会话，只读。","Method: read-only legacy Desktop session."));
+        result+="\n\n"+Text("检查位置（仅路径及状态，不显示授权内容）：","Checked locations (paths and status only, no authorization values):");
+        foreach(string profile in ClaudeDesktopProfiles(roots)){
+            string config=Path.Combine(profile,"config.json");
+            result+="\n"+profile+"\n  "+Text("目录：","Directory: ")+ClaudeDesktopPathState(profile)+"; config.json: "+ClaudeDesktopPathState(config)+"; Local State: "+ClaudeDesktopPathState(Path.Combine(profile,"Local State"));
+            if(File.Exists(config)){
+                try{var fields=QuotaJson(ReadSmallClientFile(config));result+="; OAuth V2: "+fields.ContainsKey("oauth:tokenCacheV2")+"; V1: "+fields.ContainsKey("oauth:tokenCache");}
+                catch(IOException){result+="; "+Text("配置读取失败","config read failed");}
+                catch(UnauthorizedAccessException){result+="; "+Text("无读取权限","read denied");}
+                catch(FormatException){result+="; "+Text("配置格式未识别","unrecognized config format");}
+                catch(ArgumentException){result+="; "+Text("配置格式未识别","unrecognized config format");}
+            }
+        }
+        return result;
+    }
+    static string ClaudeDesktopPathState(string path){
+        try{File.GetAttributes(path);return Text("存在","present");}
+        catch(FileNotFoundException){return Text("不存在","missing");}
+        catch(DirectoryNotFoundException){return Text("不存在","missing");}
+        catch(UnauthorizedAccessException){return Text("无访问权限","access denied");}
+        catch(IOException){return Text("无法访问","inaccessible");}
     }
 }

@@ -8,10 +8,10 @@ using System.Collections.Generic;
 using System.Web.Script.Serialization;
 using Microsoft.Win32;
 
-[assembly: AssemblyVersion("0.1.12.0")]
+[assembly: AssemblyVersion("0.1.12.1")]
 // Update metadata comes from the public project repository.
 internal static class AppServices {
-    public static readonly Version CurrentVersion=new Version(0,1,12);
+    public static readonly Version CurrentVersion=new Version(0,1,12,1);
     public const string AuthorUrl="https://github.com/ruya-suihe";
     public const string ProjectUrl="https://github.com/ruya-suihe/ai-quota-widget";
     const string RepositoryApi="https://api.github.com/repositories/1421835446";
