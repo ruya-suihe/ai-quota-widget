@@ -1,9 +1,9 @@
-﻿# 快速使用
+# 快速使用
 
 **中文** · [English](guide.en.md) · [首页](README.md)
 
 1. 从 [Releases](https://github.com/ruya-suihe/ai-quota-widget/releases/latest) 下载 `UsageQuery.exe`，在 Windows 上双击运行。
-2. 先在对应客户端登录，再进入“设置 → 启动更新”选择 Codex、Claude 或 Cursor。自动来源优先 CLI，仅当 CLI 登录文件不存在时选择桌面端。
+2. 先在对应客户端登录，再进入“设置 → 更新／平台”选择 Codex、Claude 或 Cursor。自动来源优先 CLI，仅当 CLI 登录文件不存在时选择桌面端。
 3. 拖动窗口移动，滚轮缩放；非极简模式下，移入展开、移开收起。
 4. 工具栏依次为设置、锁定、刷新、关闭，可调整位置与顺序。默认宽度 200、极简模式、山水主题。
 
@@ -25,4 +25,6 @@ Codex 正常每 30 秒查询，15 秒补读本地记录；Claude／Cursor 正常
 
 开机启动、自动更新检查均为可选。更新仅打开发布页供手动下载；“关于”提供项目二维码和作者链接。
 
-Claude／Cursor 为试验接入，真实账户联通仍待验证。截图为示例数据。
+Claude／Cursor 为试验接入；Claude Desktop Code 已通过 Windows 本机账户查询验证。截图为示例数据。
+
+连接状态、来源及最近成功时间直接显示；失败时可重试。登录来源、配置目录、用量文件和采集工具收在'高级设置'。Claude Desktop Code 无需安装 CLI 或插件，不改写 Claude 文件。

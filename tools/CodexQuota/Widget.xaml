@@ -1,0 +1,96 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Codex 额度" Width="200" Height="224" WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True" Background="Transparent" Topmost="True" ShowInTaskbar="True" FontFamily="Microsoft YaHei UI" FontSize="12" UseLayoutRounding="True">
+ <Window.Resources>
+  <SolidColorBrush x:Key="ToolbarNormal" Color="#AAB3C2" />
+  <SolidColorBrush x:Key="ToolbarHover" Color="#D5DAE1" />
+  <SolidColorBrush x:Key="ToolbarPressed" Color="#F2F4F7" />
+  <Style x:Key="ToolbarButtonStyle" TargetType="Button">
+   <Setter Property="Foreground" Value="{DynamicResource ToolbarNormal}" />
+   <Setter Property="FocusVisualStyle">
+    <Setter.Value><Style TargetType="Control"><Setter Property="Template"><Setter.Value>
+     <ControlTemplate TargetType="Control"><Border BorderBrush="{DynamicResource ToolbarHover}" BorderThickness="1" CornerRadius="3" IsHitTestVisible="False" /></ControlTemplate>
+    </Setter.Value></Setter></Style></Setter.Value>
+   </Setter>
+   <Setter Property="Template">
+    <Setter.Value><ControlTemplate TargetType="Button">
+     <Grid Background="Transparent">
+      <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+     </Grid>
+    </ControlTemplate></Setter.Value>
+   </Setter>
+   <Style.Triggers>
+    <Trigger Property="Tag" Value="locked"><Setter Property="Foreground" Value="{DynamicResource ToolbarHover}" /></Trigger>
+    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource ToolbarHover}" /></Trigger>
+    <Trigger Property="IsPressed" Value="True"><Setter Property="Foreground" Value="{DynamicResource ToolbarPressed}" /></Trigger>
+    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+   </Style.Triggers>
+  </Style>
+  <Style TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+   <Setter Property="FontSize" Value="12" />
+   <Setter Property="LineHeight" Value="18" />
+   <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+   <Setter Property="VerticalAlignment" Value="Center" />
+   <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+ </Window.Resources>
+ <Border x:Name="Root" Background="#20242C" CornerRadius="8" BorderBrush="#444C59" BorderThickness="1" Padding="8,8,8,0">
+  <Grid x:Name="LayoutRoot">
+  <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="18" /></Grid.RowDefinitions><Grid x:Name="QuotaArea" Background="Transparent" Margin="0,0,0,0" MinHeight="28"><StackPanel x:Name="Details">
+   <Grid x:Name="HeaderGrid" Margin="0,0,0,6"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock x:Name="TitleLabel" Text="Codex 额度" Foreground="#F0F3FA" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="NoWrap" />
+   <TextBlock x:Name="Updated" Foreground="#96A3BC" Margin="6,0,0,0" Grid.Column="1" FontSize="10" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right" />
+  </Grid><Grid x:Name="HourInfo"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="12" /><ColumnDefinition Width="48" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="0" /></Grid.ColumnDefinitions>
+    <TextBlock x:Name="HourLabel" Foreground="#F0F3FA" TextWrapping="NoWrap" FontWeight="Bold" FontSize="13" />
+    <TextBlock Text="|" Grid.Column="1" Foreground="#96A3BC" />
+    <TextBlock x:Name="HourValue" Grid.Column="2" TextWrapping="NoWrap" FontSize="13" FontWeight="Bold" />
+    <TextBlock Text="|" Grid.Column="3" Foreground="#96A3BC" />
+    <TextBlock x:Name="HourReset" Grid.Column="4" TextWrapping="NoWrap" FontSize="13" FontWeight="Bold" />
+    <TextBlock x:Name="TopUpdated" Grid.Column="5" Margin="6,0,0,0" FontSize="10" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" HorizontalAlignment="Right" Visibility="Collapsed" />
+   </Grid>
+   <ProgressBar x:Name="HourBar" Height="17" Margin="0,2,0,2" Maximum="100" BorderThickness="0" />
+   <ProgressBar x:Name="HourTimeBar" Height="5" Margin="0,0,0,8" Maximum="100" BorderThickness="0" />
+   <Grid x:Name="WeekInfo"><Grid.ColumnDefinitions><ColumnDefinition Width="140" /><ColumnDefinition Width="12" /><ColumnDefinition Width="48" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /><ColumnDefinition Width="0" /></Grid.ColumnDefinitions>
+    <TextBlock x:Name="WeekLabel" Foreground="#F0F3FA" TextWrapping="NoWrap" FontWeight="Bold" FontSize="13" />
+    <TextBlock Text="|" Grid.Column="1" Foreground="#96A3BC" />
+    <TextBlock x:Name="WeekValue" Grid.Column="2" TextWrapping="NoWrap" FontSize="13" FontWeight="Bold" />
+    <TextBlock Text="|" Grid.Column="3" Foreground="#96A3BC" />
+    <TextBlock x:Name="WeekReset" Grid.Column="4" TextWrapping="NoWrap" FontSize="13" FontWeight="Bold" />
+   </Grid>
+   <Grid x:Name="WeekPair" Margin="0,2,0,0"><Grid.RowDefinitions><RowDefinition Height="17" /><RowDefinition Height="2" /><RowDefinition Height="5" /></Grid.RowDefinitions>
+   <ProgressBar x:Name="WeekBar" Height="17" Maximum="100" BorderThickness="0" />
+   <ProgressBar x:Name="WeekGap" Grid.Row="1" Height="2" Maximum="100" BorderThickness="0" IsHitTestVisible="False" />
+   <ProgressBar x:Name="WeekTimeBar" Grid.Row="2" Height="5" Maximum="100" BorderThickness="0" />
+   <ProgressBar x:Name="WeekMarker" Grid.RowSpan="3" Height="24" Maximum="100" BorderThickness="0" IsHitTestVisible="False" Panel.ZIndex="1" /></Grid>
+   </StackPanel>
+  <Grid x:Name="Compact" Visibility="Collapsed">
+   <Grid.RowDefinitions><RowDefinition Height="21" /><RowDefinition Height="7" /><RowDefinition Height="6" /><RowDefinition Height="21" /><RowDefinition Height="7" /></Grid.RowDefinitions>
+   <TextBlock Text="5h" Foreground="#F0F3FA" FontSize="13" HorizontalAlignment="Left" Margin="6,0,0,0" TextWrapping="NoWrap" Panel.ZIndex="2" FontWeight="Bold" x:Name="CompactHourLabel" />
+   <ProgressBar x:Name="CompactHourBar" Height="19" Maximum="100" BorderThickness="0" />
+   <ProgressBar x:Name="CompactHourTimeBar" Grid.Row="0" Grid.RowSpan="2" Height="5" Margin="0,22,0,0" Maximum="100" BorderThickness="0" VerticalAlignment="Top" />
+   <TextBlock x:Name="CompactHourReset" Visibility="Collapsed" />
+   <TextBlock x:Name="CompactWeekLabel" Text="周" Grid.Row="3" Foreground="#F0F3FA" FontSize="13" HorizontalAlignment="Left" Margin="6,0,0,0" TextWrapping="NoWrap" Panel.ZIndex="2" FontWeight="Bold" />
+   <ProgressBar x:Name="CompactWeekBar" Grid.Row="3" Height="19" Maximum="100" BorderThickness="0" />
+   <ProgressBar x:Name="CompactWeekTimeBar" Grid.Row="3" Grid.RowSpan="2" Height="5" Margin="0,22,0,0" Maximum="100" BorderThickness="0" VerticalAlignment="Top" />
+   <ProgressBar x:Name="CompactWeekGap" Grid.Row="3" Grid.RowSpan="2" Height="2" Margin="0,20,0,0" Maximum="100" BorderThickness="0" VerticalAlignment="Top" IsHitTestVisible="False" />
+   <ProgressBar x:Name="CompactWeekMarker" Grid.Row="3" Grid.RowSpan="2" Height="26" Margin="0,1,0,0" Maximum="100" BorderThickness="0" VerticalAlignment="Top" IsHitTestVisible="False" Panel.ZIndex="1" />
+   <TextBlock x:Name="CompactWeekReset" Visibility="Collapsed" />
+  </Grid>
+  <TextBlock x:Name="EmptyUsage" Text="暂无额度数据" Margin="0,30,0,6" Visibility="Collapsed" /></Grid><Grid x:Name="Toolbar" Grid.Row="1" Background="Transparent" Margin="0,-2,0,0">
+ <Grid.ColumnDefinitions><ColumnDefinition Width="0" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+ <Button x:Name="SettingsButton" Style="{StaticResource ToolbarButtonStyle}" Width="24" Height="18" Padding="0" Margin="0" Background="Transparent" BorderThickness="0" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" VerticalContentAlignment="Bottom">
+  <Viewbox Width="13" Height="13"><Canvas Width="20" Height="20">
+   <Path Data="M 8,2 H 12 L 12.5,4.5 L 14,5.4 L 16.4,4.7 L 18.4,8.2 L 16.5,10 L 16.5,11 L 18.4,12.8 L 16.4,16.3 L 14,15.6 L 12.5,16.5 L 12,19 H 8 L 7.5,16.5 L 6,15.6 L 3.6,16.3 L 1.6,12.8 L 3.5,11 L 3.5,10 L 1.6,8.2 L 3.6,4.7 L 6,5.4 L 7.5,4.5 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" StrokeLineJoin="Round" />
+   <Ellipse Width="6" Height="6" Canvas.Left="7" Canvas.Top="7.5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" />
+  </Canvas></Viewbox>
+ </Button>
+ <Button x:Name="LockButton" Style="{StaticResource ToolbarButtonStyle}" Width="24" Height="18" Padding="0" Margin="0" Background="Transparent" BorderThickness="0" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" VerticalContentAlignment="Bottom">
+  <Viewbox Width="13" Height="13"><Canvas Width="20" Height="20"><Path x:Name="LockGlyph" Data="M 6,10 V 7 A 4,4 0 0 1 14,7 V 10 M 3,10 H 17 V 17 H 3 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.2" /></Canvas></Viewbox>
+ </Button>
+ <Button x:Name="RefreshButton" Style="{StaticResource ToolbarButtonStyle}" Width="24" Height="18" Padding="0" Margin="0" Background="Transparent" BorderThickness="0" Grid.Column="2" HorizontalAlignment="Center" VerticalAlignment="Center" VerticalContentAlignment="Bottom">
+  <Viewbox Width="13" Height="13"><Canvas Width="20" Height="20"><Path Data="M 15,5 A 7,7 0 1 0 17,10 M 15,3 L 15,6 L 11,6" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Canvas></Viewbox>
+ </Button>
+ <Button x:Name="CloseButton" Style="{StaticResource ToolbarButtonStyle}" Width="24" Height="18" Padding="0" Margin="0" Background="Transparent" BorderThickness="0" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center" VerticalContentAlignment="Bottom">
+  <Viewbox Width="13" Height="13"><Canvas Width="20" Height="20"><Path Data="M 3,3 L 17,17 M 17,3 L 3,17" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" /></Canvas></Viewbox>
+ </Button>
+</Grid></Grid>
+ </Border>
+</Window>

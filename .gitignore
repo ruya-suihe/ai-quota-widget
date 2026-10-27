@@ -1,0 +1,7 @@
+/artifacts/
+*.exe
+*.dll
+*.pdb
+/tools/CodexQuota/Widget.ico
+/tools/CodexQuota/Icon-preview.png
+.vs/
