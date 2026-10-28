@@ -278,6 +278,7 @@ partial class QuotaWidget
         public bool Live;
         public Snapshot LiveBaseline;
         public string Provider = "codex", Source = "", LoginVersion="";
+        public string ClaudeWeeklyWindow="",ClaudeReportedWindows="";
     }
     static Window window;
     static Snapshot snapshot;
@@ -293,7 +294,7 @@ partial class QuotaWidget
     static DispatcherTimer zoomPaintTimer;
     static DateTime zoomPaintUntil;
     static bool settingsOpen;
-    static bool pinIcons = true, noExpand, minimalMode=true;
+    static bool pinIcons = true, noExpand, minimalMode=false;
     static bool toolbarTop;
     static readonly string[] DefaultToolbarOrder = { "SettingsButton", "LockButton", "RefreshButton", "CloseButton" };
     static string[] toolbarOrder = (string[])DefaultToolbarOrder.Clone();
@@ -1543,8 +1544,8 @@ partial class QuotaWidget
     static void ApplyLanguage() {
         window.Title = Text("额度", "Usage");
         Control<TextBlock>("TitleLabel").Text = window.Title;
-        Control<TextBlock>("HourLabel").Text = Text("5 小时剩余", "5-hour remaining");
-        Control<TextBlock>("WeekLabel").Text = Text("本周剩余", "Weekly remaining");
+        Control<TextBlock>("HourLabel").Text = Text("五", "5h");
+        Control<TextBlock>("WeekLabel").Text = Text("周", "Week");
         UpdateSettingsHint();
 
         Control<TextBlock>("CompactHourLabel").Text = Text("五", "5h");
@@ -1987,9 +1988,9 @@ partial class QuotaWidget
     }
     static void UpdateRefreshStatus() {
         string state=activeReading ? "querying" : queryFailed || localReadWarning.Length>0 ? "failed" : snapshot==null && !currentProvider.SupportsQuery ? "unavailable" : snapshot==null || DataIsStale() ? "stale" : "normal";
-        if(!activeReading && DateTimeOffset.UtcNow<providerRetryNotBefore)state="limited";
+        if(!activeReading && !queryFailed && localReadWarning.Length==0 && !DataIsStale() && DateTimeOffset.UtcNow<providerRetryNotBefore)state="limited";
         var button=Control<Button>("RefreshButton");
-        string hex=Theme.Colors[state=="querying" ? "weekMarker" : state=="failed" ? "failure" : state=="stale" || state=="limited" ? "alert" : "icons"];
+        string hex=Theme.Colors[state=="querying" ? "weekMarker" : state=="failed" ? "failure" : state=="stale" ? "alert" : "icons"];
         var color=(Color)ColorConverter.ConvertFromString(hex);
         button.Resources["ToolbarNormal"]=new SolidColorBrush(color);
         button.Resources["ToolbarHover"]=LightenIcon(color,0.35);
@@ -2007,7 +2008,7 @@ partial class QuotaWidget
         Control<TextBlock>("EmptyUsage").Text = ProviderEmptyText();
         window.Title=currentProvider.Id=="codex" ? Text("额度","Usage") : (currentProvider.Id=="claude" ? "Claude" : "Cursor")+Text(" 额度"," usage");
         Control<TextBlock>("TitleLabel").Text=window.Title;
-        bool warning = queryFailed;
+        bool warning = queryFailed || currentProvider.Id=="claude" && claudeRateAlarm;
         Control<TextBlock>("Updated").Foreground = Theme.Brush(warning ? "alert" : "status");
         // Keep the warning visible even when zoom hides captions and the toolbar.
         Control<Border>("Root").BorderBrush = Theme.Brush(warning ? "alert" : "windowBorder");
@@ -2026,18 +2027,20 @@ partial class QuotaWidget
         }
         RenderLimit("Hour",snapshot.Hour,5);
         RenderLimit("Week",snapshot.Week,168);
-        Control<TextBlock>("Updated").Text = (queryFailed ? Text("查询失败 · ", "Query failed · ") : localReadWarning.Length > 0 ? Text("本地读取异常 · ", "Local read warning · ") : snapshot.Live ? Text("账户查询 ", "Account query ") : Text("记录更新 ", "Local record ")) + snapshot.Time.ToLocalTime().ToString("HH:mm:ss")
+        Control<TextBlock>("Updated").Text = ClaudeRateText() + (queryFailed ? Text("查询失败 · ", "Query failed · ") : localReadWarning.Length > 0 ? Text("本地读取异常 · ", "Local read warning · ") : snapshot.Live ? Text("账户查询 ", "Account query ") : Text("记录更新 ", "Local record ")) + snapshot.Time.ToLocalTime().ToString("HH:mm:ss")
             + (DataIsStale() ? Text(" · 可能已过期", " · May be stale") : "");
         Control<TextBlock>("Updated").ToolTip = (queryFailed ? Text("主动查询失败，保留上次数据。请确认 Codex 已登录且网络可用。\n", "Query failed; keeping previous data. Check Codex sign-in and network.\n") : "")
             + Text("打开、点击刷新及后台每 30 秒主动查询；每 15 秒读取本地记录。连续失败时自动重试间隔延长至最多 5 分钟，手动刷新可立即查询。\n数据时间：", "Queries on launch, manual refresh and every 30 seconds; local reads every 15 seconds. Consecutive failures extend retries up to 5 minutes; manual refresh queries immediately.\nData timestamp: ") + snapshot.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             + "\n" + localReadWarning;
         if(currentProvider.Id!="codex") Control<TextBlock>("Updated").ToolTip=ProviderHelp()+"\n"+snapshot.Source+"\n"+snapshot.Time.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")+"\n"+queryError;
+        if(currentProvider.Id=="claude") Control<TextBlock>("Updated").ToolTip+="\n"+ClaudeRateHelp()+(snapshot.ClaudeWeeklyWindow.Length>0?"\n"+Text("周额度来源：","Weekly bar from: ")+snapshot.ClaudeWeeklyWindow:"")+(snapshot.ClaudeReportedWindows.Length>0?"\n"+Text("服务端返回：","Server reported: ")+snapshot.ClaudeReportedWindows:"");
         if(providerCacheWarning.Length>0) Control<TextBlock>("Updated").ToolTip+="\n"+providerCacheWarning;
         UpdateProviderTiming();
         ResizeWidget();
     }
     static void UpdateProviderTiming() {
-        if(DateTimeOffset.UtcNow<providerRetryNotBefore)Control<TextBlock>("Updated").Text=Text("限流等待至 ","Waiting until ")+providerRetryNotBefore.ToLocalTime().ToString("HH:mm:ss");
+        if(DateTimeOffset.UtcNow<providerRetryNotBefore && snapshot!=null && (snapshot.Hour!=null || snapshot.Week!=null))Control<TextBlock>("Updated").Text+=Text(" · 限流至 "," · paused until ")+providerRetryNotBefore.ToLocalTime().ToString("HH:mm:ss");
+        else if(DateTimeOffset.UtcNow<providerRetryNotBefore)Control<TextBlock>("Updated").Text=Text("限流等待至 ","Waiting until ")+providerRetryNotBefore.ToLocalTime().ToString("HH:mm:ss");
         else if(queryFailed && currentProvider.Id!="codex")Control<TextBlock>("Updated").Text+=Text(" · 重试 "," · Retry ")+nextAutoQuery.ToLocalTime().ToString("HH:mm:ss");
     }
     static void SavePreview(string path) {
@@ -2518,7 +2521,7 @@ partial class QuotaWidget
             if (args.Length == 2 && args[0] == "--snapshot-check") {
                 CheckSnapshotSelection(args[1]); return 0;
             }
-            checking = args.Length == 2 && (args[0] == "--cards-update-check" || args[0] == "--minimal-check" || args[0] == "--layout-contract-check" || args[0] == "--check" || args[0] == "--ui-check" || args[0] == "--layout-check" || args[0] == "--hover-check" || args[0] == "--toolbar-check" || args[0] == "--reader-check" || args[0] == "--display-check" || args[0]=="--aligned-check" || args[0]=="--colors-check" || args[0]=="--ticks-check" || args[0]=="--arrow-check" || args[0]=="--settings-guide-check");
+            checking = args.Length == 2 && (args[0] == "--cards-update-check" || args[0] == "--minimal-check" || args[0] == "--layout-contract-check" || args[0] == "--check" || args[0] == "--ui-check" || args[0] == "--layout-check" || args[0] == "--hover-check" || args[0] == "--toolbar-check" || args[0] == "--reader-check" || args[0] == "--display-check" || args[0]=="--aligned-check" || args[0]=="--colors-check" || args[0]=="--ticks-check" || args[0]=="--arrow-check" || args[0]=="--settings-guide-check" || args[0]=="--claude-rate-check");
             using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("Widget.xaml"))
                 window = (Window)XamlReader.Load(source);
             ConfigureSegments();
@@ -2526,7 +2529,7 @@ partial class QuotaWidget
                 var decoder = BitmapDecoder.Create(icon, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
                 window.Icon = decoder.Frames[0];
             }
-            Control<Button>("RefreshButton").Click += (s, e) => Refresh(true);
+            Control<Button>("RefreshButton").Click += (s, e) => ManualRefresh();
             if (!checking) { LoadLanguage(); LoadZoom(); LoadDisplayOptions(); LoadTheme(); LoadToolbarPreference(); LoadSettingsGuide(); LoadProviderSelection(); }
             ConfigureInteraction();
             ApplyTheme();
@@ -2539,6 +2542,7 @@ partial class QuotaWidget
             if(args.Length==2 && args[0]=="--colors-check") {CheckColorSettings(args[1]);window.Close();return 0;}
             if(args.Length==2 && args[0]=="--aligned-check") {CheckAlignedLayout(args[1]);window.Close();return 0;}
             if(args.Length==2 && args[0]=="--display-check") {CheckDisplayRefresh(args[1]);window.Close();return 0;}
+            if(args.Length==2 && args[0]=="--claude-rate-check") {CheckClaudeRate(args[1]);window.Close();return 0;}
             if (args.Length == 2 && args[0] == "--reader-check") {
                 english=true; ApplyLanguage(); CheckLocalReader(args[1]); window.Close(); return 0;
             }
@@ -2573,6 +2577,7 @@ partial class QuotaWidget
             window.Left = SystemParameters.WorkArea.Right - window.Width - 20;
             window.Top = SystemParameters.WorkArea.Bottom - window.Height - 20;
             StartRefreshTimers();
+            StartClaudeRateWatch();
             window.Loaded += (s, e) => { if(!checking) InitializeUpdates(); Refresh(true); UpdateSettingsHint(); if (!window.IsMouseOver) collapseTimer.Start(); };
             Render();
             new Application().Run(window);

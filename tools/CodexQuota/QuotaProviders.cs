@@ -69,7 +69,7 @@ partial class QuotaWidget {
     static void SetProviderSource(string source,bool force=false) {
         if(!new[]{"auto","cli","desktop","local"}.Contains(source) || currentProvider.Id=="codex" && source!="auto" || currentProvider.Id=="cursor" && source=="local")throw new ArgumentException("Invalid source.");
         if(ProviderSource(currentProvider.Id)==source && !force)return;
-        providerSources[currentProvider.Id]=source;providerGeneration++;
+        providerSources[currentProvider.Id]=source;providerGeneration++;ResetClaudeRateContext();
         ForgetProviderCredentials(currentProvider.Id);
         // An explicit source change can select a different account. Do not carry
         // over that source's quota/error, and do not bypass a server cooldown.
@@ -96,7 +96,7 @@ partial class QuotaWidget {
         var provider=quotaProviders.FirstOrDefault(item=>item.Id==id);
         if(provider==null) throw new ArgumentException("Unknown quota provider.");
         if(provider==currentProvider && persist) return;
-        if(providerInitialized) RememberProvider();currentProvider=provider;providerGeneration++;providerInitialized=true;
+        if(providerInitialized) RememberProvider();currentProvider=provider;providerGeneration++;providerInitialized=true;ResetClaudeRateContext();
         ProviderState state;
         if(!providerStates.TryGetValue(id,out state)) {
             state=new ProviderState();
@@ -128,7 +128,7 @@ partial class QuotaWidget {
         else throw ex;
     }
     static void LoadProviderSelection() {
-        LoadClaudeConnectionOptions();
+        LoadClaudeConnectionOptions();LoadClaudeRateOptions();
         string id="codex";
         foreach(string provider in new[]{"claude","cursor"}) {
             try {string sourcePath=Path.Combine(ProviderFolder(),provider+"-source.txt");string mode=File.Exists(sourcePath)?File.ReadAllText(sourcePath).Trim():"auto";
@@ -149,6 +149,7 @@ partial class QuotaWidget {
             {"schema",1},{"provider",data.Provider},{"time",data.Time.ToString("o",CultureInfo.InvariantCulture)},
             {"hourTime",(data.HourTime==default(DateTimeOffset)?data.Time:data.HourTime).ToString("o",CultureInfo.InvariantCulture)},
             {"weekTime",(data.WeekTime==default(DateTimeOffset)?data.Time:data.WeekTime).ToString("o",CultureInfo.InvariantCulture)},
+            {"claudeWeeklyWindow",data.ClaudeWeeklyWindow},{"claudeReportedWindows",data.ClaudeReportedWindows},
             {"source",data.Source},{"loginVersion",data.LoginVersion},{"hour",CacheLimit(data.Hour)},{"week",CacheLimit(data.Week)},
             {"authority",baseline==null ? null : new Dictionary<string,object>{{"time",baseline.Time.ToString("o",CultureInfo.InvariantCulture)},{"hour",baseline.Hour!=null},{"week",baseline.Week!=null}}}
         });
@@ -182,6 +183,9 @@ partial class QuotaWidget {
         string loginVersion=Value(map,"loginVersion") as string??"";
         if(loginVersion.Length!=0 && (loginVersion.Length!=64 || loginVersion.Any(c=>!Uri.IsHexDigit(c))))throw new FormatException("Invalid cached login version.");
         result.LoginVersion=loginVersion;
+        result.ClaudeWeeklyWindow=Value(map,"claudeWeeklyWindow") as string??"";
+        result.ClaudeReportedWindows=Value(map,"claudeReportedWindows") as string??"";
+        if(!new[]{"","seven_day","seven_day_oauth_apps","seven_day_cowork"}.Contains(result.ClaudeWeeklyWindow) || result.ClaudeReportedWindows.Length>4096)throw new FormatException("Invalid cached Claude window diagnostics.");
         var authority=Map(Value(map,"authority"));
         if(Value(map,"authority")!=null && authority==null)throw new FormatException("Invalid cache authority.");
         if(authority!=null) {
@@ -293,8 +297,8 @@ partial class QuotaWidget {
         if(currentProvider.Id=="codex") return Text("读取 Codex CLI／桌面端使用的账户额度。CLI 与桌面端使用不同账户时，以查询程序当前登录的账户为准。", "Reads account limits through Codex CLI/app-server. If CLI and desktop use different accounts, the query runtime's signed-in account is used.");
         if(currentProvider.Id=="claude" && ProviderSource("claude")=="local" && ClaudeUsageFile.Length>0)return Text("每15秒只读所选 Claude Code 用量文件；保留文件原始时间，不把旧数据当作刚更新。刷新不会触发 Claude 请求。","Reads the selected usage file every 15s. Keeps its original time and does not send Claude requests.");
         if(currentProvider.Id=="claude" && ProviderSource("claude")=="local")return Text("每15秒读取状态栏／Mods 的最近采集结果，不额外联网；长任务期间客户端可能没有提供新额度，旧数据不会视为实时数据。", "Reads statusLine/Mods every 15s without network calls. Older observations keep their original time.");
-        if(currentProvider.Id=="claude" && ProviderSource("claude")=="desktop")return Text("只读 Claude 桌面端 Code 的已有授权，每15秒查询额度；无需安装 CLI、插件或修改 Claude 配置。", "Reads existing Desktop Code authorization and queries quota every 15s. No CLI, plugin or Claude configuration changes required.");
-        if(currentProvider.Id=="claude") return Text("只读所选客户端登录态，每15秒联网查询订阅额度。自动优先 CLI；可指定桌面端。本地采集可另选为备用来源。登录过期时请在客户端重新登录。", "Queries the selected client every 15s. Auto prefers CLI. A custom config folder or local usage file can be selected below. Renew expired sign-in in Claude.");
+        if(currentProvider.Id=="claude" && ProviderSource("claude")=="desktop")return Text("只读 Claude 桌面端 Code 的已有授权，每15秒查询额度（被限流时自动放慢）；无需安装 CLI、插件或修改 Claude 配置。", "Reads existing Desktop Code authorization and queries quota every 15s, slowing down if Claude rate-limits. No CLI, plugin or Claude configuration changes required.");
+        if(currentProvider.Id=="claude") return Text("只读所选客户端登录态，每15秒联网查询订阅额度（被限流时自动放慢）。自动优先 CLI；可指定桌面端。本地采集可另选为备用来源。登录过期时请在客户端重新登录。", "Queries the selected client every 15s, slowing down if Claude rate-limits. Auto prefers CLI. A custom config folder or local usage file can be selected below. Renew expired sign-in in Claude.");
         return Text("只读所选 Cursor 登录态，每15秒联网查询个人套餐额度；按真实账期显示，不把额外支出上限当套餐额度。自动优先 CLI；可指定桌面端。", "Read the selected Cursor sign-in and query personal plan usage every 15s. Uses the reported billing cycle, not on-demand spending caps. Auto prefers CLI; Desktop can be selected.");
     }
     static bool CommandExists(params string[] names) {
@@ -327,12 +331,12 @@ partial class QuotaWidget {
     }
     static double QuotaHours(string prefix,Limit limit) {return limit!=null && limit.Minutes>0 ? limit.Minutes/60 : prefix=="Hour" ? 5 : 168;}
     static string QuotaRowLabel(string prefix,Limit limit,bool compact) {
-        if(limit!=null && limit.Label=="cycle")return compact ? Text("周期","Cycle") : Text("套餐剩余","Plan remaining");
+        if(limit!=null && limit.Label=="cycle")return Text("周期","Cycle");
         double hours=QuotaHours(prefix,limit);
-        if(hours==5) return compact ? Text("五","5h") : Text("5 小时剩余","5-hour remaining");
-        if(hours==168) return compact ? Text("周","Wk") : Text("本周剩余","Weekly remaining");
+        if(hours==5) return Text("五","5h");
+        if(hours==168) return compact ? Text("周","Wk") : Text("周","Week");
         string duration=hours>=24 && hours%24==0 ? (hours/24).ToString("0.#",CultureInfo.InvariantCulture)+Text("天","d") : hours>=1 ? hours.ToString("0.#",CultureInfo.InvariantCulture)+Text("小时","h") : (hours*60).ToString("0.#",CultureInfo.InvariantCulture)+Text("分","m");
-        return compact ? duration : duration+Text("剩余"," remaining");
+        return duration;
     }
     static double PeriodReferenceMarker(Limit limit,double hours) {
         double seconds=limit.Reset-DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -377,6 +381,7 @@ partial class QuotaWidget {
         var failureActions=new WrapPanel {Margin=new Thickness(0,5,0,0),Visibility=Visibility.Collapsed};failureActions.Children.Add(retry);failureActions.Children.Add(failureDetails);
         var advancedBody=new StackPanel {Margin=new Thickness(0,7,0,0)};
         advancedBody.Children.Add(sourceRow);advancedBody.Children.Add(description);advancedBody.Children.Add(claudeActions);
+        Action syncRate;advancedBody.Children.Add(CreateClaudeRateSettings(out syncRate));
         var advanced=new Expander {Name="ProviderAdvancedSettings",IsExpanded=false,Content=advancedBody,FontSize=11,Foreground=SettingsBrush("Secondary"),Margin=new Thickness(0,8,0,0)};
         panel.Children.Add(SettingsGroup(heading,new UIElement[]{selector,statusHeading,status,actualSource,lastSuccess,error,failureActions,advanced}));
         Action updateStatus=()=>{
@@ -399,7 +404,7 @@ partial class QuotaWidget {
         var statusClock=new System.Windows.Threading.DispatcherTimer {Interval=TimeSpan.FromSeconds(1)};
         statusClock.Tick+=(s,e)=>updateStatus();panel.Loaded+=(s,e)=>{updateStatus();statusClock.Start();};panel.Unloaded+=(s,e)=>statusClock.Stop();
         if(settingsWindow!=null)settingsWindow.Closed+=(s,e)=>statusClock.Stop();
-        retry.Click+=(s,e)=>{Refresh(true);updateStatus();};
+        retry.Click+=(s,e)=>{ManualRefresh();updateStatus();};
         Action sync=()=>{
             syncing=true;heading.Text=Text("额度平台","Usage provider");sourceLabel.Text=Text("登录来源","Sign-in");
             sourceChoice.Items.Clear();foreach(string label in new[]{Text("自动 · 优先 CLI","Auto · prefer CLI"),"CLI",Text("桌面端（含 Code）","Desktop (incl. Code)")})sourceChoice.Items.Add(label);
@@ -410,7 +415,7 @@ partial class QuotaWidget {
             usageButton.Content=Text("用量文件…","Usage file…");usageButton.ToolTip=Text("选择 Claude Code 已生成的 usage.json。","Choose usage.json already generated by Claude Code.");
             collectorButton.Content=Text("内置采集","Collector");
             advanced.Header=Text("高级设置","Advanced settings");
-            description.Text=ProviderHelp();description.ToolTip=DetectProviderSources();help.Content=Text("诊断详情…","Diagnostics…");syncing=false;updateStatus();
+            syncRate();description.Text=ProviderHelp();description.ToolTip=DetectProviderSources();help.Content=Text("诊断详情…","Diagnostics…");syncing=false;updateStatus();
         };
         directoryButton.Click+=(s,e)=>{using(var picker=new System.Windows.Forms.FolderBrowserDialog {Description=Text("选择包含 .credentials.json 的 Claude Code 配置目录","Choose the Claude Code folder containing .credentials.json")}){
             if(picker.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;

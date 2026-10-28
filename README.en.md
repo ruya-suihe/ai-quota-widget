@@ -13,7 +13,7 @@ A Windows quota widget for AI coding tools, with Codex support and experimental 
 - Standard/custom palettes and five animated themes: ink, sci-fi, tides, steam and starry night.
 - Original artwork, 16:9 or manual bar heights; optional Windows startup and update checks.
 
-**Start:** download `UsageQuery.exe`, sign in to the source client, and select your provider in Settings → Update / Provider. Disable Minimal mode for exact values.
+**Start:** download `UsageQuery.exe`, sign in to the source client, and select your provider in Settings → Update / Provider. Normal mode is the default; Minimal mode remains optional in toolbar settings.
 
 Claude Desktop Code was verified with a real Windows account; other sources need confirmation in their respective account environments. Client sign-ins are read only, authentication material is excluded from quota caches, and updates are downloaded manually. Screenshots use sample data.
 

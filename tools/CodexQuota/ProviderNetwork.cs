@@ -11,7 +11,8 @@ partial class QuotaWidget {
     sealed class QuotaFetchException:Exception {
         public readonly DateTimeOffset RetryAt;
         public readonly bool AuthRejected,Incomplete;
-        public QuotaFetchException(string zh,string en,DateTimeOffset retry=default(DateTimeOffset),bool auth=false,bool incomplete=false):base(Text(zh,en)){RetryAt=retry;AuthRejected=auth;Incomplete=incomplete;}
+        public readonly int HttpStatus;
+        public QuotaFetchException(string zh,string en,DateTimeOffset retry=default(DateTimeOffset),bool auth=false,bool incomplete=false,int httpStatus=0):base(Text(zh,en)){RetryAt=retry;AuthRejected=auth;Incomplete=incomplete;HttpStatus=httpStatus;}
     }
     sealed class QuotaHttpResult {
         public int Status;
@@ -71,7 +72,11 @@ partial class QuotaWidget {
         QuotaHttpResult result;
         try {result=send(url,headers,method);}catch(QuotaFetchException){throw;}
         catch(Exception){throw new QuotaFetchException("额度连接失败，保留上次数据。","Quota connection failed; keeping previous data.");}
-        if(result.Status==429 || result.Status==503 && result.RetryAfter.Length>0) throw new QuotaFetchException("服务端限流或暂不可用，等待后重试。","Service limited or unavailable; waiting to retry.",QuotaRetryAfter(result.RetryAfter,DateTimeOffset.UtcNow));
+        if(result.Status==429 || result.Status==503 && result.RetryAfter.Length>0) {
+            // Claude can send Retry-After: 0; the refresh policy adds its own backoff.
+            string code=" (HTTP "+result.Status.ToString(CultureInfo.InvariantCulture)+")";
+            throw new QuotaFetchException("服务端限流或暂不可用，等待后重试。"+code,"Service limited or unavailable; waiting to retry."+code,QuotaRetryAfter(result.RetryAfter,DateTimeOffset.UtcNow),httpStatus:result.Status);
+        }
         if(result.Status==401 || result.Status==403) throw new QuotaFetchException("登录已失效或访问被拒绝，请在对应客户端确认登录。","Sign-in expired or access denied. Check the source client.",auth:true);
         if(result.Status>=300 && result.Status<400)throw new QuotaFetchException("额度接口要求跳转，已停止转发登录凭据。","Quota endpoint redirected; credentials were not forwarded.");
         if(result.Status!=200)throw new QuotaFetchException("额度服务返回错误，请稍后重试。","Quota service returned an error. Try again later.");
@@ -94,18 +99,30 @@ partial class QuotaWidget {
         if(text==null || !DateTimeOffset.TryParse(text,CultureInfo.InvariantCulture,DateTimeStyles.AssumeUniversal,out reset))throw new FormatException("Invalid quota reset.");
         return reset.ToUnixTimeSeconds();
     }
+    // Names of usage windows the server filled in, for troubleshooting (no values).
+    // Window diagnostics belong to the accepted snapshot, never shared worker state.
     static Snapshot ParseClaudeOnline(string text,DateTimeOffset now,string source) {
         var root=QuotaJson(text);var result=new Snapshot {Provider="claude",Time=now,Live=true,Source=source};
+        result.ClaudeReportedWindows=string.Join(", ",root.Where(pair=>pair.Value!=null).Take(20).Select(pair=>{
+            var fields=Map(pair.Value);
+            return fields==null?pair.Key:pair.Key+"{"+string.Join(",",fields.Where(field=>field.Value!=null).Select(field=>field.Key).Take(12))+"}";
+        }));
         // An unrelated HTML/JSON page is not a successful authoritative empty read.
-        if(!root.ContainsKey("five_hour") && !root.ContainsKey("seven_day"))throw new FormatException("Unknown Claude quota schema.");
-        foreach(string name in new[]{"five_hour","seven_day"}) {
-            object raw=Value(root,name);if(raw==null)continue;
+        if(!new[]{"five_hour","seven_day","seven_day_oauth_apps","seven_day_cowork"}.Any(root.ContainsKey))throw new FormatException("Unknown Claude quota schema.");
+        Func<string,int,Limit> window=(name,minutes)=>{
+            object raw=Value(root,name);if(raw==null)return null;
             var item=Map(raw);if(item==null)throw new FormatException("Invalid Claude window.");
-            var percent=QuotaNumber(item,"utilization");if(!percent.HasValue)continue;
+            var percent=QuotaNumber(item,"utilization");if(!percent.HasValue)return null;
             if(percent.Value>100)throw new FormatException("Invalid Claude percentage.");
-            var limit=new Limit {Remaining=100-percent.Value,Reset=QuotaIsoReset(Value(item,"resets_at")),Minutes=name=="five_hour"?300:10080};
-            if(limit.Reset>0 && limit.Reset<=now.ToUnixTimeSeconds())continue;
-            if(name=="five_hour")result.Hour=limit;else result.Week=limit;
+            var limit=new Limit {Remaining=100-percent.Value,Reset=QuotaIsoReset(Value(item,"resets_at")),Minutes=minutes};
+            return limit.Reset>0 && limit.Reset<=now.ToUnixTimeSeconds()?null:limit;
+        };
+        result.Hour=window("five_hour",300);result.Week=window("seven_day",10080);result.ClaudeWeeklyWindow=result.Week==null?"":"seven_day";
+        // Some organization seats report no overall weekly window, only per-surface
+        // ones. Show the most used of those, since either may stop Claude Code.
+        if(result.Week==null)foreach(string name in new[]{"seven_day_oauth_apps","seven_day_cowork"}) {
+            var limit=window(name,10080);
+            if(limit!=null && (result.Week==null || limit.Remaining<result.Week.Remaining)){result.Week=limit;result.ClaudeWeeklyWindow=name;}
         }
         return result;
     }

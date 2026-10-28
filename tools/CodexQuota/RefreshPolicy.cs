@@ -4,6 +4,14 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 partial class QuotaWidget {
     const int AccountQuerySeconds = 30;
+    // api.anthropic.com/api/oauth/usage answers frequent polling with 429 and an
+    // unknown budget. Poll fast, double on 429, halve after two good reads.
+    const int ClaudeFastestSeconds = 15, ClaudeSlowestSeconds = 300;
+    static int claudeQuerySeconds = ClaudeFastestSeconds, claudeQueryStreak;
+    static void ClaudeRateLimited(DateTimeOffset now) {
+        claudeQueryStreak=0;claudeQuerySeconds=Math.Min(ClaudeSlowestSeconds,claudeQuerySeconds*2);
+        RecordProviderRetry("claude",now.AddSeconds(claudeQuerySeconds));
+    }
     static DateTimeOffset nextAutoQuery = DateTimeOffset.MinValue, activeQueryStarted;
     static int activeQueryFailures;
     static DateTimeOffset providerRetryNotBefore=DateTimeOffset.MinValue;
@@ -24,7 +32,10 @@ partial class QuotaWidget {
         lastActiveCompleted = now;
         if(succeeded) {
             activeQueryFailures = 0;
-            int interval=currentProvider.Id=="codex"?AccountQuerySeconds:15;
+            if(currentProvider.Id=="claude" && ++claudeQueryStreak>=2 && claudeQuerySeconds>ClaudeFastestSeconds) {
+                claudeQueryStreak=0;claudeQuerySeconds=Math.Max(ClaudeFastestSeconds,claudeQuerySeconds/2);
+            }
+            int interval=currentProvider.Id=="codex"?AccountQuerySeconds:currentProvider.Id=="claude"?claudeQuerySeconds:15;
             nextAutoQuery = activeQueryStarted.AddSeconds(interval);
             if(nextAutoQuery <= now) nextAutoQuery = now.AddSeconds(interval);
         } else {
@@ -78,7 +89,7 @@ partial class QuotaWidget {
         if(active && DateTimeOffset.UtcNow<providerRetryNotBefore){Render();return;}
         reading = true;
         activeReading=active;
-        bool activeSucceeded = false;
+        bool activeSucceeded = false,activePaused=false;
         if(active) activeQueryStarted = DateTimeOffset.UtcNow;
         Control<Button>("RefreshButton").IsEnabled = false;
         UpdateRefreshStatus();
@@ -105,12 +116,17 @@ partial class QuotaWidget {
                 bool changed=selected!=snapshot;
                 snapshot = selected;
                 if(candidate!=null && (changed || providerCacheWarning.Length>0)) SaveProviderSnapshot();
-                if (active) { activeSucceeded=true; queryFailed = false; queryError = ""; localReadWarning = ""; localFailureSince=DateTimeOffset.MinValue; }
+                if (active) { activeSucceeded=true; queryFailed = false; queryError = ""; localReadWarning = ""; localFailureSince=DateTimeOffset.MinValue; if(provider.Id=="claude") CalibrateClaudeRate(candidate); }
                 else RegisterLocalResult(candidate,DateTimeOffset.UtcNow);
             } catch (Exception ex) {
                 var limited=ex as QuotaFetchException;if(limited!=null)RecordProviderRetry(provider.Id,limited.RetryAt);
+                bool claudeLimited=limited!=null && limited.HttpStatus==429 && active && provider.Id=="claude";
+                if(claudeLimited && generation==providerGeneration)ClaudeRateLimited(DateTimeOffset.UtcNow);
                 if(generation!=providerGeneration || refreshStopped) return;
-                if (active) {
+                // Claude's usage budget runs out in bursts. The last reading is still
+                // the account's own; show it with the pause instead of a failure.
+                if (claudeLimited) {activePaused=true;queryError=ex.Message;}
+                else if (active) {
                     if(provider.Id=="cursor" && snapshot!=null && ShouldDropSnapshotForLogin(snapshot,provider.Id,source,ClientRoots.Current()))snapshot=null;
                     queryFailed = true; queryError = ex.Message; fallback = true;
                 }
@@ -129,7 +145,8 @@ partial class QuotaWidget {
         }
         finally {
             if(generation==providerGeneration) {
-            if(active) CompleteActiveQuery(activeSucceeded,DateTimeOffset.UtcNow);
+            if(active && !activePaused) CompleteActiveQuery(activeSucceeded,DateTimeOffset.UtcNow);
+            else if(activePaused) lastActiveCompleted=DateTimeOffset.UtcNow;
             activeReading=false;
             reading = false;
             if(!refreshStopped) {
