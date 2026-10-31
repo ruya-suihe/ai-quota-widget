@@ -117,13 +117,24 @@ partial class QuotaWidget {
             var limit=new Limit {Remaining=100-percent.Value,Reset=QuotaIsoReset(Value(item,"resets_at")),Minutes=minutes};
             return limit.Reset>0 && limit.Reset<=now.ToUnixTimeSeconds()?null:limit;
         };
-        result.Hour=window("five_hour",300);result.Week=window("seven_day",10080);result.ClaudeWeeklyWindow=result.Week==null?"":"seven_day";
+        result.Hour=window("five_hour",300);
+        // Optional weekly windows must not block each other. If all supplied
+        // windows are malformed, still fail rather than erase a valid old reading.
+        bool weeklyMalformed=false;
+        Func<string,Limit> weekly=name=>{
+            try{return window(name,10080);}
+            catch(FormatException){weeklyMalformed=true;return null;}
+            catch(ArgumentException){weeklyMalformed=true;return null;}
+            catch(OverflowException){weeklyMalformed=true;return null;}
+        };
+        result.Week=weekly("seven_day");result.ClaudeWeeklyWindow=result.Week==null?"":"seven_day";
         // Some organization seats report no overall weekly window, only per-surface
         // ones. Show the most used of those, since either may stop Claude Code.
         if(result.Week==null)foreach(string name in new[]{"seven_day_oauth_apps","seven_day_cowork"}) {
-            var limit=window(name,10080);
+            var limit=weekly(name);
             if(limit!=null && (result.Week==null || limit.Remaining<result.Week.Remaining)){result.Week=limit;result.ClaudeWeeklyWindow=name;}
         }
+        if(result.Week==null && weeklyMalformed)throw new FormatException("Claude weekly windows could not be parsed; keep the previous reading.");
         return result;
     }
     static Snapshot ParseCursorOnline(string text,DateTimeOffset now,string source) {
